@@ -69,8 +69,8 @@ class LocalClient(BaseClient):
         timeout: Optional[float] = None,
         build_index: bool = True,
         summarize: bool = False,
-        telemetry: TelemetryRequest = False,
         watch_interval: float = 0,
+        telemetry: TelemetryRequest = False,
         **kwargs,
     ) -> Dict[str, Any]:
         """Add resource to OpenViking."""

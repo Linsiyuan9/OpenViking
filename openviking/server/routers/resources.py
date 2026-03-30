@@ -73,6 +73,9 @@ class AddResourceRequest(BaseModel):
     preserve_structure: Optional[bool] = None
     telemetry: TelemetryRequest = False
     watch_interval: float = 0
+    build_index: bool = True
+    summarize: bool = False
+    branch: Optional[str] = None
 
     @model_validator(mode="after")
     def check_path_or_temp_path(self):
@@ -166,7 +169,11 @@ async def add_resource(
         "exclude": request.exclude,
         "directly_upload_media": request.directly_upload_media,
         "watch_interval": request.watch_interval,
+        "build_index": request.build_index,
+        "summarize": request.summarize,
     }
+    if request.branch is not None:
+        kwargs["branch"] = request.branch
     if request.preserve_structure is not None:
         kwargs["preserve_structure"] = request.preserve_structure
 

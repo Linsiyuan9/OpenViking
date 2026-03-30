@@ -211,7 +211,10 @@ class AsyncOpenViking:
             parent: Target parent URI (must already exist).
             build_index: Whether to build vector index immediately (default: True).
             summarize: Whether to generate summary (default: False).
+            watch_interval: Watch interval in minutes for automatic monitoring.
             telemetry: Whether to attach operation telemetry data to the result.
+            **kwargs: Extra options forwarded to the parser chain, e.g.
+                ``branch`` for git repository branch selection.
         """
         await self._ensure_initialized()
 

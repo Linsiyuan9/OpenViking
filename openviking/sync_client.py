@@ -95,6 +95,7 @@ class SyncOpenViking:
         timeout: float = None,
         build_index: bool = True,
         summarize: bool = False,
+        watch_interval: float = 0,
         telemetry: TelemetryRequest = False,
         **kwargs,
     ) -> Dict[str, Any]:
@@ -103,8 +104,10 @@ class SyncOpenViking:
         Args:
             build_index: Whether to build vector index immediately (default: True).
             summarize: Whether to generate summary (default: False).
+            watch_interval: Watch interval in minutes for automatic monitoring.
             **kwargs: Extra options forwarded to the parser chain, e.g.
-                ``strict``, ``ignore_dirs``, ``include``, ``exclude``.
+                ``strict``, ``ignore_dirs``, ``include``, ``exclude``,
+                ``branch`` for git repository branch selection.
         """
         if to and parent:
             raise ValueError("Cannot specify both 'to' and 'parent' at the same time.")
@@ -119,6 +122,7 @@ class SyncOpenViking:
                 timeout=timeout,
                 build_index=build_index,
                 summarize=summarize,
+                watch_interval=watch_interval,
                 telemetry=telemetry,
                 **kwargs,
             )

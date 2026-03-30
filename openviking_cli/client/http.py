@@ -328,6 +328,10 @@ class AsyncHTTPClient(BaseClient):
         exclude: Optional[str] = None,
         directly_upload_media: bool = True,
         preserve_structure: Optional[bool] = None,
+        build_index: bool = True,
+        summarize: bool = False,
+        watch_interval: float = 0,
+        branch: Optional[str] = None,
         telemetry: TelemetryRequest = False,
     ) -> Dict[str, Any]:
         """Add resource to OpenViking."""
@@ -347,10 +351,15 @@ class AsyncHTTPClient(BaseClient):
             "include": include,
             "exclude": exclude,
             "directly_upload_media": directly_upload_media,
+            "build_index": build_index,
+            "summarize": summarize,
+            "watch_interval": watch_interval,
             "telemetry": telemetry,
         }
         if preserve_structure is not None:
             request_data["preserve_structure"] = preserve_structure
+        if branch is not None:
+            request_data["branch"] = branch
 
         path_obj = Path(path)
         if path_obj.exists():

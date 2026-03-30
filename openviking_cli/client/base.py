@@ -41,6 +41,8 @@ class BaseClient(ABC):
         instruction: str = "",
         wait: bool = False,
         timeout: Optional[float] = None,
+        build_index: bool = True,
+        summarize: bool = False,
         watch_interval: float = 0,
         telemetry: TelemetryRequest = False,
     ) -> Dict[str, Any]:

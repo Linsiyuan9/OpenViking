@@ -139,6 +139,10 @@ class SyncHTTPClient:
         include: Optional[str] = None,
         exclude: Optional[str] = None,
         directly_upload_media: bool = True,
+        build_index: bool = True,
+        summarize: bool = False,
+        watch_interval: float = 0,
+        branch: Optional[str] = None,
         telemetry: TelemetryRequest = False,
     ) -> Dict[str, Any]:
         """Add resource to OpenViking."""
@@ -147,17 +151,21 @@ class SyncHTTPClient:
         return run_async(
             self._async_client.add_resource(
                 path,
-                to,
-                parent,
-                reason,
-                instruction,
-                wait,
-                timeout,
-                strict,
-                ignore_dirs,
-                include,
-                exclude,
-                directly_upload_media,
+                to=to,
+                parent=parent,
+                reason=reason,
+                instruction=instruction,
+                wait=wait,
+                timeout=timeout,
+                strict=strict,
+                ignore_dirs=ignore_dirs,
+                include=include,
+                exclude=exclude,
+                directly_upload_media=directly_upload_media,
+                build_index=build_index,
+                summarize=summarize,
+                watch_interval=watch_interval,
+                branch=branch,
                 telemetry=telemetry,
             )
         )
