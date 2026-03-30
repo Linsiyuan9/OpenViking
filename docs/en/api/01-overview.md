@@ -91,6 +91,13 @@ export OPENVIKING_CLI_CONFIG_FILE=/path/to/ovcli.conf
 
 See the [Configuration Guide](../guides/01-configuration.md#ovcliconf) for details.
 
+**Local files in HTTP mode**
+
+- CLI, `SyncHTTPClient`, and `AsyncHTTPClient` automatically upload local files and directories before calling the server API.
+- Raw HTTP callers do not get this convenience layer. When using `curl` or another HTTP client, upload the file with `POST /api/v1/resources/temp_upload` first, then call the target API with the returned `temp_file_id`.
+- For local directories in raw HTTP mode, zip the directory first and upload the `.zip` file; the server does not accept direct host directory paths.
+- `POST /api/v1/resources` accepts remote URLs directly, but does not accept direct host filesystem paths such as `./doc.md` or `/tmp/doc.md`.
+
 ### Direct HTTP (curl)
 
 ```bash
@@ -328,6 +335,7 @@ Compact JSON with status wrapper (when `--compact` is true, which is the default
 | POST | `/api/v1/sessions` | Create session |
 | GET | `/api/v1/sessions` | List sessions |
 | GET | `/api/v1/sessions/{id}` | Get session |
+| GET | `/api/v1/sessions/{id}/context` | Get assembled session context |
 | DELETE | `/api/v1/sessions/{id}` | Delete session |
 | POST | `/api/v1/sessions/{id}/commit` | Commit session |
 | POST | `/api/v1/sessions/{id}/messages` | Add message |
