@@ -17,4 +17,4 @@ fi
 cd "$SCRIPT_DIR"
 nohup python3 -m vikingbot.mcp_server "$@" > mcp_server.log 2>&1 &
 echo $! > "$PID_FILE"
-echo "MCP server started (PID: $!), log: $SCRIPT_DIR/mcp_server.log"
+echo "MCP server started (PID: $! ,python3), log: $SCRIPT_DIR/mcp_server.log"

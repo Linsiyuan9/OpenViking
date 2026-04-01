@@ -14,6 +14,6 @@ if kill -0 "$PID" 2>/dev/null; then
     kill "$PID"
     echo "MCP server stopped (PID: $PID)."
 else
-    echo "Process $PID not found. Cleaning up."
+    echo "Process python3 $PID not found. Cleaning up."
 fi
 rm -f "$PID_FILE"
