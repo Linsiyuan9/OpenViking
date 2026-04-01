@@ -245,7 +245,7 @@ def create_server(host: str = "0.0.0.0", port: int = 2033) -> FastMCP:
 
 def main():
     parser = argparse.ArgumentParser(description="OpenViking Tools MCP Server")
-    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=int(os.getenv("OV_MCP_PORT", "2033")))
     parser.add_argument("--transport", choices=["streamable-http", "stdio"], default="streamable-http")
     parser.add_argument("--agent-id", default=os.getenv("OV_AGENT_ID", "mcp-server"))
