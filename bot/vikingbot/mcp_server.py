@@ -43,12 +43,11 @@ async def _get_client() -> VikingClient:
 # MCP server factory
 # ---------------------------------------------------------------------------
 
-def create_server(host: str = "127.0.0.1", port: int = 2033) -> FastMCP:
+def create_server(host: str = "0.0.0.0", port: int = 2033) -> FastMCP:
     mcp = FastMCP(
-        name="openviking-tools",
+        name="viki-tools",
         instructions=(
-            "OpenViking file-system tools: list, search, grep, glob, read, "
-            "add_resource, and memory_commit."
+            "Code retrieval tools: list, search, grep, glob, read。"
         ),
         host=host,
         port=port,
@@ -98,29 +97,29 @@ def create_server(host: str = "127.0.0.1", port: int = 2033) -> FastMCP:
         return str(results)
 
     # ---- openviking_add_resource ----
-    @mcp.tool()
-    async def openviking_add_resource(path: str, description: str) -> str:
-        """Add a resource (URL, git repo, or local file) to OpenViking. Async operation.
-
-        Args:
-            path: URL or local file path.
-            description: Description of the resource.
-        """
-        from pathlib import Path as P
-        if path and not path.startswith("http"):
-            local = P(path).expanduser().resolve()
-            if not local.exists():
-                return f"Error: File not found: {path}"
-            if not local.is_file():
-                return f"Error: Not a file: {path}"
-        client = await VikingClient.create(agent_id=_agent_id)
-        try:
-            result = await client.add_resource(path, description)
-            if result:
-                return f"Successfully added resource: {result.get('root_uri', '')}"
-            return "Failed to add resource"
-        finally:
-            await client.close()
+    # @mcp.tool()
+    # async def openviking_add_resource(path: str, description: str) -> str:
+    #     """Add a resource (URL, git repo, or local file) to OpenViking. Async operation.
+    #
+    #     Args:
+    #         path: URL or local file path.
+    #         description: Description of the resource.
+    #     """
+    #     from pathlib import Path as P
+    #     if path and not path.startswith("http"):
+    #         local = P(path).expanduser().resolve()
+    #         if not local.exists():
+    #             return f"Error: File not found: {path}"
+    #         if not local.is_file():
+    #             return f"Error: Not a file: {path}"
+    #     client = await VikingClient.create(agent_id=_agent_id)
+    #     try:
+    #         result = await client.add_resource(path, description)
+    #         if result:
+    #             return f"Successfully added resource: {result.get('root_uri', '')}"
+    #         return "Failed to add resource"
+    #     finally:
+    #         await client.close()
 
     # ---- openviking_grep ----
     @mcp.tool()
@@ -221,21 +220,21 @@ def create_server(host: str = "127.0.0.1", port: int = 2033) -> FastMCP:
             lines.append(f"--- END OF {u} ---")
         return "\n".join(lines)
 
-    # ---- openviking_memory_commit ----
-    @mcp.tool()
-    async def openviking_memory_commit(
-        messages: list[dict], session_id: str = "mcp-session", sender_id: str = "mcp-user"
-    ) -> str:
-        """Commit messages to OpenViking for memory storage.
-
-        Args:
-            messages: List of messages, each with 'role' (user/assistant) and 'content'.
-            session_id: Session identifier.
-            sender_id: Sender identifier.
-        """
-        client = await _get_client()
-        await client.commit(session_id, messages, sender_id)
-        return f"Successfully committed to session {session_id}"
+    # # ---- openviking_memory_commit ----
+    # @mcp.tool()
+    # async def openviking_memory_commit(
+    #     messages: list[dict], session_id: str = "mcp-session", sender_id: str = "mcp-user"
+    # ) -> str:
+    #     """Commit messages to OpenViking for memory storage.
+    #
+    #     Args:
+    #         messages: List of messages, each with 'role' (user/assistant) and 'content'.
+    #         session_id: Session identifier.
+    #         sender_id: Sender identifier.
+    #     """
+    #     client = await _get_client()
+    #     await client.commit(session_id, messages, sender_id)
+    #     return f"Successfully committed to session {session_id}"
 
     return mcp
 
