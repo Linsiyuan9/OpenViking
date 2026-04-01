@@ -47,7 +47,13 @@ def create_server(host: str = "0.0.0.0", port: int = 2033) -> FastMCP:
     mcp = FastMCP(
         name="viki-tools",
         instructions=(
-            "Code retrieval tools: list, search, grep, glob, read。"
+            "Code repository retrieval toolkit. "
+            "Use 'openviking_search' for semantic code search — find code by intent or description, not exact text. "
+            "Use 'openviking_grep' for exact pattern matching with regex, like grep/rg. "
+            "Use 'openviking_glob' to find files by name pattern (e.g. **/*.py, src/**/*.ts). "
+            "Use 'openviking_list' to browse the repository directory tree. "
+            "Use 'openviking_multi_read' to fetch full file contents by URI. "
+            "Typical workflow: search/grep/glob to locate relevant files → multi_read to get their contents."
         ),
         host=host,
         port=port,
