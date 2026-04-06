@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0
 """OpenAI Embedder Implementation"""
 
+import logging
 from typing import Any, Dict, List, Optional
 
 import openai
@@ -14,6 +15,8 @@ from openviking.models.embedder.base import (
 )
 from openviking.models.vlm.registry import DEFAULT_AZURE_API_VERSION
 from openviking.telemetry import get_current_telemetry
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIDenseEmbedder(DenseEmbedderBase):
@@ -82,7 +85,9 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
                        non-symmetric mode with query_param/document_param.
             api_key: API key, if None will read from env vars (OPENVIKING_EMBEDDING_API_KEY or OPENAI_API_KEY)
             api_base: API base URL, optional. Required for third-party OpenAI-compatible APIs.
-            dimension: Dimension (if model supports), optional
+            dimension: Target dimension for output vectors. If specified and the model returns vectors
+                      with a different dimension, the output will be truncated to this dimension.
+                      If None, uses the model's default dimension without truncation.
             query_param: Parameter for query-side embeddings. Supports simple values (e.g., 'query')
                          or key=value format (e.g., 'input_type=query,task=search'). Defaults to None.
                          Setting this (or document_param) activates non-symmetric mode.
@@ -136,6 +141,7 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
 
         # Auto-detect dimension
         self._dimension = dimension
+        self._actual_model_dimension = None
         if self._dimension is None:
             self._dimension = self._detect_dimension()
 
@@ -143,10 +149,25 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
         """Detect dimension by making an actual API call"""
         try:
             result = self.embed("test")
-            return len(result.dense_vector) if result.dense_vector else 1536
+            detected_dim = len(result.dense_vector) if result.dense_vector else 1536
+            self._actual_model_dimension = detected_dim
+            return detected_dim
         except Exception:
             # Use default value, text-embedding-3-small defaults to 1536
             return 1536
+
+    def _truncate_vector(self, vector: List[float]) -> List[float]:
+        """Truncate vector to target dimension if needed.
+
+        Args:
+            vector: Input vector from API
+
+        Returns:
+            Truncated vector if dimension is set and smaller than input, otherwise original vector
+        """
+        if self.dimension is not None and len(vector) > self.dimension:
+            return vector[: self.dimension]
+        return vector
 
     def _update_telemetry_token_usage(self, response) -> None:
         usage = getattr(response, "usage", None)
@@ -160,11 +181,21 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
 
         prompt_tokens = _usage_value("prompt_tokens", 0)
         total_tokens = _usage_value("total_tokens", prompt_tokens)
-        output_tokens = max(total_tokens - prompt_tokens, 0)
+        completion_tokens = max(total_tokens - prompt_tokens, 0)
+
+        # Update telemetry
         get_current_telemetry().add_token_usage_by_source(
             "embedding",
             prompt_tokens,
-            output_tokens,
+            completion_tokens,
+        )
+
+        # Update token tracker
+        self.update_token_usage(
+            model_name=self.model_name,
+            provider=self._provider,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
         )
 
     def _parse_param_string(self, param: Optional[str]) -> Dict[str, str]:
@@ -235,8 +266,11 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
         Raises:
             RuntimeError: When API call fails
         """
-        try:
+
+        def _call() -> EmbedResult:
             kwargs: Dict[str, Any] = {"input": text, "model": self.model_name}
+            # Don't pass dimensions parameter to API - some OpenAI-compatible models don't support it
+            # Instead, we'll truncate the result vector if needed
 
             extra_body = self._build_extra_body(is_query=is_query)
             if extra_body:
@@ -246,7 +280,17 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
             self._update_telemetry_token_usage(response)
             vector = response.data[0].embedding
 
+            # Truncate vector if needed
+            vector = self._truncate_vector(vector)
+
             return EmbedResult(dense_vector=vector)
+
+        try:
+            return self._run_with_retry(
+                _call,
+                logger=logger,
+                operation_name="OpenAI embedding",
+            )
         except openai.APIError as e:
             raise RuntimeError(f"OpenAI API error: {e.message}") from e
         except Exception as e:
@@ -268,10 +312,10 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
         if not texts:
             return []
 
-        try:
+        def _call() -> List[EmbedResult]:
             kwargs: Dict[str, Any] = {"input": texts, "model": self.model_name}
-            if self.dimension:
-                kwargs["dimensions"] = self.dimension
+            # Don't pass dimensions parameter to API - some OpenAI-compatible models don't support it
+            # Instead, we'll truncate the result vectors if needed
 
             extra_body = self._build_extra_body(is_query=is_query)
             if extra_body:
@@ -280,7 +324,18 @@ class OpenAIDenseEmbedder(DenseEmbedderBase):
             response = self.client.embeddings.create(**kwargs)
             self._update_telemetry_token_usage(response)
 
-            return [EmbedResult(dense_vector=item.embedding) for item in response.data]
+            # Truncate vectors if needed
+            return [
+                EmbedResult(dense_vector=self._truncate_vector(item.embedding))
+                for item in response.data
+            ]
+
+        try:
+            return self._run_with_retry(
+                _call,
+                logger=logger,
+                operation_name="OpenAI batch embedding",
+            )
         except openai.APIError as e:
             raise RuntimeError(f"OpenAI API error: {e.message}") from e
         except Exception as e:

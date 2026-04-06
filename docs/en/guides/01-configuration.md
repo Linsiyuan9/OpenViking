@@ -8,28 +8,32 @@ Create `~/.openviking/ov.conf` in your project directory:
 
 ```json
 {
+  "storage": {
+    "workspace": "./data",
+    "vectordb": {
+      "name": "context",
+      "backend": "local"
+    },
+    "agfs": {
+      "port": 1833,
+      "log_level": "warn",
+      "backend": "local"
+    }
+  },
   "embedding": {
     "dense": {
-      "provider": "volcengine",
-      "api_key": "your-api-key",
-      "model": "doubao-embedding-vision-250615",
-      "dimension": 1024
+      "api_base" : "<api-endpoint>",
+      "api_key"  : "<your-api-key>",
+      "provider" : "<provider-type>",
+      "dimension": 1024,
+      "model"    : "<model-name>"
     }
   },
   "vlm": {
-    "provider": "volcengine",
-    "api_key": "your-api-key",
-    "model": "doubao-seed-2-0-pro-260215"
-  },
-  "rerank": {
-    "provider": "volcengine",
-    "api_key": "your-api-key",
-    "model": "doubao-rerank-250615"
-  },
-  "storage": {
-    "workspace": "./data",
-    "agfs": { "backend": "local" },
-    "vectordb": { "backend": "local" }
+    "api_base" : "<api-endpoint>",
+    "api_key"  : "<your-api-key>",
+    "provider" : "<provider-type>",
+    "model"    : "<model-name>"
   }
 }
 ```
@@ -99,6 +103,7 @@ Embedding model configuration for vector search, supporting dense, sparse, and h
 {
   "embedding": {
     "max_concurrent": 10,
+    "max_retries": 3,
     "dense": {
       "provider": "volcengine",
       "api_key": "your-api-key",
@@ -115,12 +120,15 @@ Embedding model configuration for vector search, supporting dense, sparse, and h
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `max_concurrent` | int | Maximum concurrent embedding requests (`embedding.max_concurrent`, default: `10`) |
+| `max_retries` | int | Maximum retry attempts for transient embedding provider errors (`embedding.max_retries`, default: `3`; `0` disables retry) |
 | `provider` | str | `"volcengine"`, `"openai"`, `"vikingdb"`, `"jina"`, `"voyage"`, or `"gemini"` |
 | `api_key` | str | API key |
 | `model` | str | Model name |
 | `dimension` | int | Vector dimension. For Voyage, this maps to `output_dimension` |
 | `input` | str | Input type: `"text"` or `"multimodal"` |
 | `batch_size` | int | Batch size for embedding requests |
+
+`embedding.max_retries` only applies to transient errors such as `429`, `5xx`, timeouts, and connection failures. Permanent errors such as `400`, `401`, `403`, and `AccountOverdue` are not retried automatically. The backoff strategy is exponential backoff with jitter, starting at `0.5s` and capped at `8s`.
 
 **Available Models**
 
@@ -355,7 +363,8 @@ Vision Language Model for semantic extraction (L0/L1 generation).
   "vlm": {
     "api_key": "your-api-key",
     "model": "doubao-seed-2-0-pro-260215",
-    "api_base": "https://ark.cn-beijing.volces.com/api/v3"
+    "api_base": "https://ark.cn-beijing.volces.com/api/v3",
+    "max_retries": 3
   }
 }
 ```
@@ -369,8 +378,11 @@ Vision Language Model for semantic extraction (L0/L1 generation).
 | `api_base` | str | API endpoint (optional) |
 | `thinking` | bool | Enable thinking mode for VolcEngine models (default: `false`) |
 | `max_concurrent` | int | Maximum concurrent semantic LLM calls (default: `100`) |
+| `max_retries` | int | Maximum retry attempts for transient VLM provider errors (default: `3`; `0` disables retry) |
 | `extra_headers` | object | Custom HTTP headers (for OpenAI-compatible providers, optional) |
 | `stream` | bool | Enable streaming mode (for OpenAI-compatible providers, default: `false`) |
+
+`vlm.max_retries` only applies to transient errors such as `429`, `5xx`, timeouts, and connection failures. Permanent authentication, authorization, and billing errors are not retried automatically. The backoff strategy is exponential backoff with jitter, starting at `0.5s` and capped at `8s`.
 
 **Available Models**
 
@@ -492,19 +504,23 @@ See [Code Skeleton Extraction](../concepts/06-extraction.md#code-skeleton-extrac
 
 ### rerank
 
-Reranking model for search result refinement.
+Reranking model for search result refinement. Supports VikingDB (Volcengine), Cohere, OpenAI-compatible APIs, and LiteLLM.
+
+**Volcengine (VikingDB):**
 
 ```json
 {
   "rerank": {
-    "provider": "volcengine",
-    "api_key": "your-api-key",
-    "model": "doubao-rerank-250615"
+    "provider": "vikingdb",
+    "ak": "your-access-key",
+    "sk": "your-secret-key",
+    "model_name": "doubao-seed-rerank",
+    "model_version": "251028"
   }
 }
 ```
 
-**OpenAI-compatible provider (e.g. DashScope qwen3-rerank):**
+**OpenAI-compatible provider (e.g. DashScope):**
 
 ```json
 {
@@ -512,19 +528,30 @@ Reranking model for search result refinement.
     "provider": "openai",
     "api_key": "your-api-key",
     "api_base": "https://dashscope.aliyuncs.com/compatible-api/v1/reranks",
-    "model": "qwen3-rerank",
+    "model": "qwen3-vl-rerank",
     "threshold": 0.1
   }
 }
 ```
 
+**Parameters**
+
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `provider` | str | `"volcengine"` or `"openai"` |
-| `api_key` | str | API key |
-| `model` | str | Model name |
-| `api_base` | str | Endpoint URL (openai provider only) |
-| `threshold` | float | Score threshold; results below this are filtered out. Default: `0.1` |
+| `provider` | str | `"vikingdb"`, `"cohere"`, `"openai"`, or `"litellm"`. Auto-detected if omitted. |
+| `ak` | str | VikingDB Access Key (vikingdb provider only) |
+| `sk` | str | VikingDB Secret Key (vikingdb provider only) |
+| `model_name` | str | Model name (vikingdb provider only, default: `doubao-seed-rerank`) |
+| `api_key` | str | API key (for `openai`, `cohere`, or `litellm` providers) |
+| `api_base` | str | Endpoint URL (for `openai` provider) |
+| `model` | str | Model name (for `openai` or `litellm` providers) |
+| `threshold` | float | Score threshold between `0.0` and `1.0`; results below this are filtered out. Default: `0.1` |
+
+**Supported providers:**
+- `vikingdb`: Volcengine VikingDB Rerank API (uses AK/SK)
+- `cohere`: Cohere Rerank API
+- `openai`: OpenAI-compatible Rerank API
+- `litellm`: Rerank services via LiteLLM (requires `litellm` package)
 
 If rerank is not configured, search uses vector similarity only.
 
@@ -826,13 +853,13 @@ When running OpenViking as an HTTP service, add a `server` section to `ov.conf`:
 |-------|------|-------------|---------|
 | `host` | str | Bind address | `0.0.0.0` |
 | `port` | int | Bind port | `1933` |
-| `auth_mode` | str | Authentication mode: `"api_key"` or `"trusted"` | `"api_key"` |
-| `root_api_key` | str | Root API key for multi-tenant auth in `api_key` mode | `null` |
+| `auth_mode` | str | Authentication mode: `"api_key"` or `"trusted"`. Default is `"api_key"` | `"api_key"` |
+| `root_api_key` | str | Root API key for multi-tenant auth in `api_key` mode. In `trusted` mode it is optional extra protection, not the source of user identity | `null` |
 | `cors_origins` | list | Allowed CORS origins | `["*"]` |
 
-`api_key` mode uses API keys. `trusted` mode trusts `X-OpenViking-Account` / `X-OpenViking-User` headers from a trusted gateway or internal caller.
+`api_key` mode uses API keys and is the default. `trusted` mode trusts `X-OpenViking-Account` / `X-OpenViking-User` headers from a trusted gateway or internal caller.
 
-When `root_api_key` is configured, the server enables multi-tenant authentication. Use the Admin API to create accounts and user keys. Development mode only applies when `auth_mode = "api_key"` and `root_api_key` is not set.
+When `root_api_key` is configured in `api_key` mode, the server enables multi-tenant authentication. Use the Admin API to create accounts and user keys. In `trusted` mode, ordinary requests do not require user registration first; each request is resolved as `USER` from the injected identity headers. Development mode only applies when `auth_mode = "api_key"` and `root_api_key` is not set.
 
 For startup and deployment details see [Deployment](./03-deployment.md), for authentication see [Authentication](./04-authentication.md).
 
@@ -854,7 +881,7 @@ Path locks are enabled by default and usually require no configuration. **The de
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
 | `lock_timeout` | float | Path lock acquisition timeout (seconds). `0` = fail immediately if locked (default). `> 0` = wait/retry up to this many seconds, then raise `LockAcquisitionError`. | `0.0` |
-| `lock_expire` | float | Stale lock expiry threshold (seconds). Locks held longer than this by a crashed process are force-released. | `300.0` |
+| `lock_expire` | float | Lock inactivity threshold (seconds). Locks not refreshed within this window are treated as stale and reclaimed. | `300.0` |
 
 For details on the lock mechanism, see [Path Locks and Crash Recovery](../concepts/09-transaction.md).
 
@@ -956,6 +983,7 @@ For detailed encryption explanations, see [Data Encryption](../concepts/10-encry
 {
   "embedding": {
     "max_concurrent": 10,
+    "max_retries": 3,
     "dense": {
       "provider": "volcengine",
       "api_key": "string",
@@ -971,6 +999,7 @@ For detailed encryption explanations, see [Data Encryption](../concepts/10-encry
     "api_base": "string",
     "thinking": false,
     "max_concurrent": 100,
+    "max_retries": 3,
     "extra_headers": {},
     "stream": false
   },
@@ -1058,7 +1087,9 @@ Error: VLM request timeout
 
 - Check network connectivity
 - Increase timeout in config
+- For intermittent timeouts, increase `vlm.max_retries` moderately
 - Try a smaller model
+- For bulk ingestion, consider lowering `vlm.max_concurrent`
 
 ### Rate Limiting
 
@@ -1067,6 +1098,8 @@ Error: Rate limit exceeded
 ```
 
 Volcengine has rate limits. Consider batch processing with delays or upgrading your plan.
+- Lower `embedding.max_concurrent` / `vlm.max_concurrent` first
+- Keep a small `max_retries` value for occasional `429`s; set it to `0` if you prefer fail-fast behavior
 
 ## Related Documentation
 

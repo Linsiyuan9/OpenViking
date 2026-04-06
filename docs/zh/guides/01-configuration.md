@@ -104,6 +104,7 @@ OpenViking 使用 JSON 配置文件（`ov.conf`）进行设置。配置文件支
 {
   "embedding": {
     "max_concurrent": 10,
+    "max_retries": 3,
     "dense": {
       "provider": "volcengine",
       "api_key": "your-api-key",
@@ -121,12 +122,15 @@ OpenViking 使用 JSON 配置文件（`ov.conf`）进行设置。配置文件支
 | 参数 | 类型 | 说明 |
 |------|------|------|
 | `max_concurrent` | int | 最大并发 Embedding 请求数（`embedding.max_concurrent`，默认：`10`） |
+| `max_retries` | int | Embedding provider 瞬时错误的最大重试次数（`embedding.max_retries`，默认：`3`；`0` 表示禁用重试） |
 | `provider` | str | `"volcengine"`、`"openai"`、`"vikingdb"`、`"jina"`、`"voyage"`、`"minimax"` 或 `"gemini"` |
 | `api_key` | str | API Key |
 | `model` | str | 模型名称 |
 | `dimension` | int | 向量维度 |
 | `input` | str | 输入类型：`"text"` 或 `"multimodal"` |
 | `batch_size` | int | 批量请求大小 |
+
+`embedding.max_retries` 仅对瞬时错误生效，例如 `429`、`5xx`、超时和连接错误；`400`、`401`、`403`、`AccountOverdue` 这类永久错误不会自动重试。退避策略为指数退避，初始延迟 `0.5s`，上限 `8s`，并带随机抖动。
 
 **可用模型**
 
@@ -330,7 +334,8 @@ OpenViking 使用 JSON 配置文件（`ov.conf`）进行设置。配置文件支
     "provider": "volcengine",
     "api_key": "your-api-key",
     "model": "doubao-seed-2-0-pro-260215",
-    "api_base": "https://ark.cn-beijing.volces.com/api/v3"
+    "api_base": "https://ark.cn-beijing.volces.com/api/v3",
+    "max_retries": 3
   }
 }
 ```
@@ -344,8 +349,11 @@ OpenViking 使用 JSON 配置文件（`ov.conf`）进行设置。配置文件支
 | `api_base` | str | API 端点（可选） |
 | `thinking` | bool | 启用思考模式（仅对部分火山模型生效，默认：`false`） |
 | `max_concurrent` | int | 语义处理阶段 LLM 最大并发调用数（默认：`100`） |
+| `max_retries` | int | VLM provider 瞬时错误的最大重试次数（默认：`3`；`0` 表示禁用重试） |
 | `extra_headers` | object | 自定义 HTTP 请求头（OpenAI 兼容 provider 可用，可选） |
 | `stream` | bool | 启用流式模式（OpenAI 兼容 provider 可用，默认：`false`） |
+
+`vlm.max_retries` 仅对瞬时错误生效，例如 `429`、`5xx`、超时和连接错误；认证、鉴权、欠费等永久错误不会自动重试。退避策略为指数退避，初始延迟 `0.5s`，上限 `8s`，并带随机抖动。
 
 **可用模型**
 
@@ -467,19 +475,23 @@ AST 提取支持：Python、JavaScript/TypeScript、Rust、Go、Java、C/C++。�
 
 ### rerank
 
-用于搜索结果精排的 Rerank 模型。
+用于搜索结果精排的 Rerank 模型。支持 VikingDB (火山引擎)、Cohere、OpenAI 兼容接口和 LiteLLM。
+
+**火山引擎 (VikingDB):**
 
 ```json
 {
   "rerank": {
-    "provider": "volcengine",
-    "api_key": "your-api-key",
-    "model": "doubao-rerank-250615"
+    "provider": "vikingdb",
+    "ak": "your-access-key",
+    "sk": "your-secret-key",
+    "model_name": "doubao-seed-rerank",
+    "model_version": "251028"
   }
 }
 ```
 
-**OpenAI 兼容提供方（如 DashScope qwen3-rerank）：**
+**OpenAI 兼容提供方 (如 DashScope):**
 
 ```json
 {
@@ -487,19 +499,30 @@ AST 提取支持：Python、JavaScript/TypeScript、Rust、Go、Java、C/C++。�
     "provider": "openai",
     "api_key": "your-api-key",
     "api_base": "https://dashscope.aliyuncs.com/compatible-api/v1/reranks",
-    "model": "qwen3-rerank",
+    "model": "qwen3-vl-rerank",
     "threshold": 0.1
   }
 }
 ```
 
+**参数**
+
 | 参数 | 类型 | 说明 |
 |------|------|------|
-| `provider` | str | `"volcengine"` 或 `"openai"` |
-| `api_key` | str | API Key |
-| `model` | str | 模型名称 |
-| `api_base` | str | 接口地址（openai 提供方专用） |
-| `threshold` | float | 分数阈值，低于此值的结果会被过滤。默认：`0.1` |
+| `provider` | str | `"vikingdb"`、`"cohere"`、`"openai"` 或 `"litellm"`。省略时基于字段自动识别。 |
+| `ak` | str | VikingDB Access Key（仅 `vikingdb` 提供方使用） |
+| `sk` | str | VikingDB Secret Key（仅 `vikingdb` 提供方使用） |
+| `model_name` | str | 模型名称（仅 `vikingdb` 提供方使用，默认：`doubao-seed-rerank`） |
+| `api_key` | str | API Key（用于 `openai`、`cohere` 或 `litellm` 提供方） |
+| `api_base` | str | 接口地址（用于 `openai` 提供方） |
+| `model` | str | 模型名称（用于 `openai` 或 `litellm` 提供方） |
+| `threshold` | float | 分数阈值，范围为 `0.0` 到 `1.0`。低于此值的结果会被过滤。默认：`0.1` |
+
+**支持的提供方:**
+- `vikingdb`: 火山引擎 VikingDB Rerank API (使用 AK/SK)
+- `cohere`: Cohere Rerank API
+- `openai`: OpenAI 兼容的 Rerank 接口
+- `litellm`: 通过 LiteLLM 调用的 Rerank 服务 (需安装 `litellm`)
 
 如果未配置 Rerank，搜索仅使用向量相似度。
 
@@ -803,13 +826,13 @@ openviking --account acme --user alice --agent-id assistant-2 ls viking://
 |------|------|------|--------|
 | `host` | str | 绑定地址 | `0.0.0.0` |
 | `port` | int | 绑定端口 | `1933` |
-| `auth_mode` | str | 认证模式：`"api_key"` 或 `"trusted"` | `"api_key"` |
-| `root_api_key` | str | Root API Key。在 `api_key` 模式下启用多租户认证 | `null` |
+| `auth_mode` | str | 认证模式：`"api_key"` 或 `"trusted"`。默认值为 `"api_key"` | `"api_key"` |
+| `root_api_key` | str | Root API Key。在 `api_key` 模式下启用多租户认证；在 `trusted` 模式下它只是可选附加保护，不负责解析普通用户身份 | `null` |
 | `cors_origins` | list | CORS 允许的来源 | `["*"]` |
 
-`api_key` 模式使用 API Key 认证；`trusted` 模式信任上游网关或受信调用方注入的 `X-OpenViking-Account` / `X-OpenViking-User` 请求头。
+`api_key` 模式使用 API Key 认证，也是默认模式；`trusted` 模式信任上游网关或受信调用方注入的 `X-OpenViking-Account` / `X-OpenViking-User` 请求头。
 
-配置 `root_api_key` 后，服务端启用多租户认证。通过 Admin API 创建工作区和用户 key。只有在 `auth_mode = "api_key"` 且未配置 `root_api_key` 时，服务端才会进入开发模式。
+在 `api_key` 模式下配置 `root_api_key` 后，服务端启用正式多租户认证，并通过 Admin API 创建工作区和用户 key。在 `trusted` 模式下，普通请求不需要先注册 user key；每个请求都会根据注入的身份头解析成 `USER`。只有在 `auth_mode = "api_key"` 且未配置 `root_api_key` 时，服务端才会进入开发模式。
 
 启动方式和部署详情见 [服务部署](./03-deployment.md)，认证详情见 [认证](./04-authentication.md)。
 
@@ -923,7 +946,7 @@ openviking --account acme --user alice --agent-id assistant-2 ls viking://
 | 参数 | 类型 | 说明 | 默认值 |
 |------|------|------|--------|
 | `lock_timeout` | float | 获取路径锁的等待超时（秒）。`0` = 立即失败（默认）；`> 0` = 最多等待此时间后抛出 `LockAcquisitionError` | `0.0` |
-| `lock_expire` | float | 锁过期时间（秒）。超过此时间的锁将被视为崩溃进程遗留的陈旧锁并强制释放 | `300.0` |
+| `lock_expire` | float | 锁失活阈值（秒）。超过此时间未被 refresh 的锁会被视为陈旧锁并回收 | `300.0` |
 
 路径锁机制的详细说明见 [路径锁与崩溃恢复](../concepts/09-transaction.md)。
 
@@ -933,6 +956,7 @@ openviking --account acme --user alice --agent-id assistant-2 ls viking://
 {
   "embedding": {
     "max_concurrent": 10,
+    "max_retries": 3,
     "dense": {
       "provider": "volcengine",
       "api_key": "string",
@@ -948,6 +972,7 @@ openviking --account acme --user alice --agent-id assistant-2 ls viking://
     "api_base": "string",
     "thinking": false,
     "max_concurrent": 100,
+    "max_retries": 3,
     "extra_headers": {},
     "stream": false
   },
@@ -1035,7 +1060,9 @@ Error: VLM request timeout
 
 - 检查网络连接
 - 增加配置中的超时时间
+- 对偶发超时，适当增大 `vlm.max_retries`
 - 尝试更小的模型
+- 如为批量导入场景，结合降低 `vlm.max_concurrent`
 
 ### 速率限制
 
@@ -1044,6 +1071,8 @@ Error: Rate limit exceeded
 ```
 
 火山引擎有速率限制。考虑批量处理时添加延迟或升级套餐。
+- 优先降低 `embedding.max_concurrent` / `vlm.max_concurrent`
+- 对偶发 `429` 可保留少量 `max_retries`；若希望快速失败，可将其设为 `0`
 
 ## 相关文档
 

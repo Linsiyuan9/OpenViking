@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from openviking.message import Message, Part
 from openviking.server.identity import RequestContext, Role
-from openviking.telemetry import get_current_telemetry
+from openviking.telemetry import get_current_telemetry, tracer
 from openviking.utils.time_utils import get_current_timestamp
 from openviking_cli.session.user_id import UserIdentifier
 from openviking_cli.utils import get_logger, run_async
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _ARCHIVE_WAIT_POLL_SECONDS = 0.1
+_ARCHIVE_WAIT_TIMEOUT_SECONDS = 300.0  # 5 minutes max wait for previous archive
 
 
 @dataclass
@@ -349,6 +350,7 @@ class Session:
         """Sync wrapper for commit_async()."""
         return run_async(self.commit_async())
 
+    @tracer("session.commit")
     async def commit_async(self) -> Dict[str, Any]:
         """Async commit session: archive immediately, extract memories in background.
 
@@ -363,6 +365,9 @@ class Session:
         from openviking.storage.transaction import LockContext, get_lock_manager
         from openviking_cli.exceptions import FailedPreconditionError
 
+        trace_id = tracer.get_trace_id()
+        logger.info(f"[TRACER] session_commit started, trace_id={trace_id}")
+
         # ===== Phase 1: Snapshot + clear (PathLock-protected) =====
         # Fast pre-check: skip lock entirely if no messages (common case avoids
         # unnecessary filesystem lock acquisition).
@@ -374,6 +379,7 @@ class Session:
                 "task_id": None,
                 "archive_uri": None,
                 "archived": False,
+                "trace_id": trace_id,
             }
 
         blocking_archive = await self._get_blocking_failed_archive_ref()
@@ -397,6 +403,7 @@ class Session:
                     "task_id": None,
                     "archive_uri": None,
                     "archived": False,
+                    "trace_id": trace_id,
                 }
 
             self._compression.compression_index += 1
@@ -441,7 +448,12 @@ class Session:
 
         # Create TaskRecord for tracking Phase 2
         tracker = get_task_tracker()
-        task = tracker.create("session_commit", resource_id=self.session_id)
+        task = tracker.create(
+            "session_commit",
+            resource_id=self.session_id,
+            owner_account_id=self.ctx.account_id,
+            owner_user_id=self.ctx.user.user_id,
+        )
 
         asyncio.create_task(
             self._run_memory_extraction(
@@ -460,8 +472,10 @@ class Session:
             "task_id": task.task_id,
             "archive_uri": archive_uri,
             "archived": True,
+            "trace_id": trace_id,
         }
 
+    @tracer("session_commit_phase2")
     async def _run_memory_extraction(
         self,
         task_id: str,
@@ -740,9 +754,7 @@ class Session:
             remaining_budget -= item["tokens"]
 
         archive_tokens = latest_archive_tokens + pre_archive_tokens
-        included_archives = (1 if include_latest_overview else 0) + len(
-            included_pre_archive_abstracts
-        )
+        included_archives = len(included_pre_archive_abstracts)
         dropped_archives = max(
             0, context["total_archives"] - context["failed_archives"] - included_archives
         )
@@ -751,7 +763,6 @@ class Session:
             "latest_archive_overview": (
                 latest_archive["overview"] if include_latest_overview else ""
             ),
-            "latest_archive_id": latest_archive["archive_id"] if latest_archive else "",
             "pre_archive_abstracts": included_pre_archive_abstracts,
             "messages": [m.to_dict() for m in merged_messages],
             "estimatedTokens": message_tokens + archive_tokens,
@@ -835,8 +846,6 @@ class Session:
                         archive["archive_uri"], overview
                     ),
                 }
-                continue
-
             abstract = await self._read_archive_abstract(archive["archive_uri"])
             if abstract:
                 pre_archive_abstracts.append(
@@ -1034,11 +1043,18 @@ class Session:
         return int(match.group(1))
 
     async def _wait_for_previous_archive_done(self, archive_index: int) -> bool:
-        """Wait until the previous archive is done, or report dependency failure."""
+        """Wait until the previous archive is done, or report dependency failure.
+
+        Returns True if the previous archive completed successfully, False if it
+        failed or timed out.  A timeout is treated as a failure so that the
+        current archive does not hang indefinitely when the previous archive's
+        Phase 2 crashed without writing either .done or .failed.json.
+        """
         if archive_index <= 1 or not self._viking_fs:
             return True
 
         previous_archive_uri = f"{self._session_uri}/history/archive_{archive_index - 1:03d}"
+        deadline = asyncio.get_event_loop().time() + _ARCHIVE_WAIT_TIMEOUT_SECONDS
         while True:
             try:
                 await self._viking_fs.read_file(f"{previous_archive_uri}/.done", ctx=self.ctx)
@@ -1054,6 +1070,13 @@ class Session:
                 return False
             except Exception:
                 pass
+
+            if asyncio.get_event_loop().time() >= deadline:
+                logger.error(
+                    f"Timed out waiting for previous archive archive_{archive_index - 1:03d} "
+                    f"after {_ARCHIVE_WAIT_TIMEOUT_SECONDS}s — treating as failed"
+                )
+                return False
 
             await asyncio.sleep(_ARCHIVE_WAIT_POLL_SECONDS)
 

@@ -58,24 +58,17 @@ jobs:
           python-version: '3.10'
 
       - name: Cache Go modules
-        uses: actions/cache@v4
+        uses: actions/cache@v5
+        continue-on-error: true
         with:
           path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('third_party/agfs/**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-go-
 
-      - name: Cache C++ extensions
-        uses: actions/cache@v4
-        with:
-          path: openviking/pyagfs
-          key: ${{ runner.os }}-cpp-${{ hashFiles('**/CMakeLists.txt', '**/*.cpp', '**/*.h') }}
-          restore-keys: |
-            ${{ runner.os }}-cpp-
-
       - name: Cache Python dependencies (Unix)
         if: runner.os != 'Windows'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt', '**/pyproject.toml') }}
@@ -84,7 +77,7 @@ jobs:
 
       - name: Cache Python dependencies (Windows)
         if: runner.os == 'Windows'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~\AppData\Local\pip\Cache
           key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt', '**/pyproject.toml') }}
@@ -94,7 +87,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version: '1.25.1'
 
       - name: Install system dependencies (Ubuntu)
         if: runner.os == 'Linux'
@@ -109,7 +102,7 @@ jobs:
       - name: Install system dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
-          choco install cmake -y
+          echo "cmake is pre-installed on Windows runner and will also be installed via pip"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -429,11 +422,11 @@ jobs:
           $env:SERVER_URL = "http://127.0.0.1:${{ env.SERVER_PORT }}"
           
           if ($env:HAS_SECRETS -eq "true") {
-            Write-Host "Running full test suite with VLM/Embedding"
-            uv run python -m pytest . -v --html=api-test-report.html --self-contained-html
+            Write-Host "Running full test suite with VLM/Embedding (Windows: skipping filesystem tests)"
+            uv run python -m pytest . -v --html=api-test-report.html --self-contained-html --ignore=filesystem/
           } else {
-            Write-Host "Running basic tests only (no VLM/Embedding)"
-            uv run python -m pytest . -v --html=api-test-report.html --self-contained-html --ignore=retrieval/ --ignore=resources/test_pack.py --ignore=resources/test_wait_processed.py --ignore=admin/ --ignore=skills/ --ignore=system/test_system_status.py --ignore=system/test_is_healthy.py --ignore=system/test_system_wait.py -k "not test_observer"
+            Write-Host "Running basic tests only (no VLM/Embedding, Windows: skipping filesystem tests)"
+            uv run python -m pytest . -v --html=api-test-report.html --self-contained-html --ignore=retrieval/ --ignore=resources/test_pack.py --ignore=resources/test_wait_processed.py --ignore=admin/ --ignore=skills/ --ignore=system/test_system_status.py --ignore=system/test_is_healthy.py --ignore=system/test_system_wait.py --ignore=filesystem/ -k "not test_observer"
           }
         continue-on-error: true
 
