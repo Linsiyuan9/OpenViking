@@ -100,8 +100,8 @@ class CodeRepositoryParser(BaseParser):
         start_time = time.time()
         source_str = str(source)
         temp_local_dir = None
-        branch = None
-        commit = None
+        branch = kwargs.get("branch") or kwargs.get("ref")
+        commit = kwargs.get("commit")
 
         try:
             # 1. Prepare local temp directory
@@ -149,7 +149,9 @@ class CodeRepositoryParser(BaseParser):
             logger.info(f"Uploading to VikingFS: {target_root_uri}")
 
             # 4. Upload to VikingFS (filtering on the fly)
-            file_count = await self._upload_directory(local_dir, target_root_uri, viking_fs)
+            file_count = await self._upload_directory(
+                local_dir, target_root_uri, viking_fs, **kwargs
+            )
 
             logger.info(f"Uploaded {file_count} files to {target_root_uri}")
 
@@ -548,7 +550,26 @@ class CodeRepositoryParser(BaseParser):
 
         return name
 
-    async def _upload_directory(self, local_dir: Path, viking_uri_base: str, viking_fs: Any) -> int:
+    async def _upload_directory(
+        self, local_dir: Path, viking_uri_base: str, viking_fs: Any, **kwargs
+    ) -> int:
         """Recursively upload directory to VikingFS using shared upload utilities."""
-        count, _ = await upload_directory(local_dir, viking_uri_base, viking_fs)
+        # Convert exclude glob patterns (e.g. "*.sql,*.xml") to extension set
+        # for upload_directory's ignore_extensions parameter
+        exclude = kwargs.get("exclude")
+        extra_ignore_extensions = None
+        if exclude:
+            extra_ignore_extensions = set()
+            for pattern in exclude.split(","):
+                pattern = pattern.strip()
+                if pattern.startswith("*."):
+                    extra_ignore_extensions.add(pattern[1:])  # "*.sql" -> ".sql"
+            if extra_ignore_extensions:
+                from openviking.parse.parsers.constants import IGNORE_EXTENSIONS
+                extra_ignore_extensions = IGNORE_EXTENSIONS | extra_ignore_extensions
+
+        count, _ = await upload_directory(
+            local_dir, viking_uri_base, viking_fs,
+            ignore_extensions=extra_ignore_extensions,
+        )
         return count
