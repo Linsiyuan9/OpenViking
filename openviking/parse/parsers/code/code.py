@@ -309,6 +309,7 @@ class CodeRepositoryParser(BaseParser):
             stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await proc.communicate()
+        logger.info(f"[git] {' '.join(args)}")
         if proc.returncode != 0:
             error_msg = stderr.decode().strip()
             user_msg = "Git command failed."

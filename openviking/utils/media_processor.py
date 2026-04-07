@@ -58,7 +58,7 @@ class UnifiedResourceProcessor:
         """Process any source (file/URL/content) with appropriate strategy."""
         # Check if URL
         if self._is_url(source):
-            return await self._process_url(source, instruction)
+            return await self._process_url(source, instruction, **kwargs)
 
         # Check if looks like a file path (short enough and no newlines)
         is_potential_path = (
